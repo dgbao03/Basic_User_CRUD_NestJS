@@ -4,8 +4,9 @@ import { AuthService } from '../auth/auth.service';
 import { ConfigService } from '@nestjs/config';
 import { CreateUserDTO, UpdateUserDTO, SignInPayloadDTO } from './user.dto';
 import { JwtService } from '../jwt/jwt.service';
-import { User } from 'src/interfaces/User';
-import { AuthGuard } from 'src/guards/auth.guard';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from './user.entity';
 
 
 @Injectable()
@@ -14,49 +15,23 @@ export class UserService {
         private authService: AuthService,
         private jwtService: JwtService,
         private configService: ConfigService,
+        @InjectRepository(User) private userRepository: Repository<User>
     ){}
 
-    private _users: User[] = 
-    [{
-        id: uuidv4(),
-        fullname: 'Nguyễn Văn ABC',
-        age: 25,
-        email: 'nguyenvana@example.com',
-        username: 'nguyenvana',
-        password: '$2b$10$31JK2iiRYTEjFMp1prfV5OecRe8cDuqKfd1JqR0.83EuvjEgg5wz.',
-    },
-    {
-        id: uuidv4(),
-        fullname: 'Lê Văn C',
-        age: 28,
-        email: 'levanc@example.com',
-        username: 'levanc',
-        password: '$2b$10$31JK2iiRYTEjFMp1prfV5OecRe8cDuqKfd1JqR0.83EuvjEgg5wz.',
-    },
-    {
-        id: uuidv4(),
-        fullname: 'Đỗ Gia B',
-        age: 21,
-        email: 'baodo@example.com',
-        username: 'baodo',
-        password: '$2b$10$31JK2iiRYTEjFMp1prfV5OecRe8cDuqKfd1JqR0.83EuvjEgg5wz.',
-    }];
-
-    @UseGuards(AuthGuard)
-    getAllUsers() {
-        return this._users;
+    async getAllUsers() {
+        return await this.userRepository.find();
     }
 
-    @UseGuards(AuthGuard)
-    getUserById(id: string) {
-        const user = this._users.find(user => user.id === id);
-        if(!user) throw new NotFoundException("User not found!");
+    async getUserById(id: string) {
+        const user = await this.userRepository.findOne({ where: { id } });
+
+        if (!user) throw new NotFoundException("User not found!");
 
         return user;
     }
 
     async signIn(payload: SignInPayloadDTO) {
-        const user = this._users.find(user => user.username === payload.username);
+        const user = await this.userRepository.findOne({ where: { username: payload.username } });
         if (!user) throw new NotFoundException("User not found!");
 
         const checkPassword = await this.authService.comparePassword(payload.password, user.password);
@@ -85,42 +60,25 @@ export class UserService {
                 }
             )
         }
-
     }
 
-    @UseGuards(AuthGuard)
-    createUser(userData: CreateUserDTO) {
-        userData.password = this.authService.hashPassword(userData.password);
-
-        return this._users.push({ id: uuidv4(), ...userData });
+    async createUser(userData: CreateUserDTO) {
+        const user = this.userRepository.create(userData); 
+        user.id = uuidv4();
+        user.password = this.authService.hashPassword(user.password);
+        
+        return await this.userRepository.save(user);
     }
 
-    @UseGuards(AuthGuard)
-    updateUser(id: string, updateData: UpdateUserDTO, currentUserId: string) {
+    async updateUser(id: string, updateData: UpdateUserDTO, currentUserId: string) {
         if (id != currentUserId) throw new ForbiddenException();
-
-        let updateUser = this.getUserById(id);
-    
-        if (!updateUser) {
-          throw new BadRequestException("User not found!");  
-        }
-
-        updateUser = { ...updateUser, ...updateData };
-    
-        const index = this._users.findIndex(user => user.id === id);
-        if (index != -1) {
-            this._users[index] = updateUser;
-        }
-    
-        return updateUser; 
+        
+        return await this.userRepository.update(id, updateData);
     }
 
-    @UseGuards(AuthGuard)
-    deleteUser(id: string) {
-        const deletedIndex = this._users.findIndex(user => user.id === id);
-        if (deletedIndex === -1) throw new NotFoundException();
+    async deleteUser(id: string) {
+        return await this.userRepository.delete(id);
 
-        return this._users.splice(deletedIndex, 1);
     }
 }
 
